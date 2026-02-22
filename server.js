@@ -1,8 +1,8 @@
 // ============================================
-// server.js — Real-Time Private Chatroom Backend
+// server.js — Multi-User Chatroom Backend
 // ============================================
-// This file sets up an Express server with Socket.io
-// for real-time, PIN-based private chat between two users.
+// Supports 10+ users per room with Admin/User roles.
+// Admin creates the room; Users join with the same PIN.
 
 const express = require("express");
 const http = require("http");
@@ -22,10 +22,12 @@ app.use(express.static(path.join(__dirname, "public")));
 // ============================================
 // Room Management
 // ============================================
-// We store rooms as a Map:
+// rooms Map:
 //   key   = PIN (string)
-//   value = array of { socketId, username }
-// Each room can hold at most 2 users.
+//   value = {
+//     admin: username (string),
+//     users: [ { socketId, username, role } ]
+//   }
 
 const rooms = new Map();
 
@@ -37,70 +39,109 @@ io.on("connection", (socket) => {
 
     // ------------------------------------------
     // Event: "join-room"
-    // The client sends { username, pin } to join.
+    // Client sends { username, pin, role }
+    // role = "admin" or "user"
     // ------------------------------------------
-    socket.on("join-room", ({ username, pin }) => {
+    socket.on("join-room", ({ username, pin, role }) => {
         // Validate inputs
-        if (!username || !pin) {
-            socket.emit("join-error", "Username and PIN are required.");
+        if (!username || !pin || !role) {
+            socket.emit("join-error", "All fields are required.");
             return;
         }
 
-        // Make sure PIN is treated as a string
-        const roomPin = String(pin);
+        // Sanitize
+        const roomPin = String(pin).trim();
+        const cleanName = String(username).trim();
+        const cleanRole = String(role).toLowerCase();
 
-        // Create room entry if it doesn't exist yet
-        if (!rooms.has(roomPin)) {
-            rooms.set(roomPin, []);
-        }
-
-        const room = rooms.get(roomPin);
-
-        // Check: room already full (2 users max)
-        if (room.length >= 2) {
-            socket.emit("join-error", "This room is already full (2/2 users).");
+        if (cleanName.length < 1 || cleanName.length > 20) {
+            socket.emit("join-error", "Username must be 1–20 characters.");
             return;
         }
 
-        // Check: same username already in the room
-        if (room.some((u) => u.username === username)) {
-            socket.emit(
-                "join-error",
-                `"${username}" is already in this room. Pick the other name.`
-            );
+        // --- ADMIN wants to create a room ---
+        if (cleanRole === "admin") {
+            if (rooms.has(roomPin)) {
+                socket.emit("join-error", "A room with this PIN already exists. Choose a different PIN.");
+                return;
+            }
+
+            // Create the room with this user as admin
+            rooms.set(roomPin, {
+                admin: cleanName,
+                users: [{ socketId: socket.id, username: cleanName, role: "admin" }],
+            });
+
+            socket.join(roomPin);
+            socket.roomPin = roomPin;
+            socket.username = cleanName;
+            socket.role = "admin";
+
+            console.log(`👑 Admin "${cleanName}" created room [${roomPin}]`);
+
+            socket.emit("join-success", {
+                username: cleanName,
+                role: "admin",
+                users: [{ username: cleanName, role: "admin" }],
+            });
+
             return;
         }
 
-        // --- All checks passed — add user to the room ---
-        room.push({ socketId: socket.id, username });
-        socket.join(roomPin); // Socket.io room
-        socket.roomPin = roomPin; // Store on socket for cleanup
-        socket.username = username;
+        // --- USER wants to join an existing room ---
+        if (cleanRole === "user") {
+            if (!rooms.has(roomPin)) {
+                socket.emit("join-error", "No room found with this PIN. Ask your Admin for the correct PIN.");
+                return;
+            }
 
-        console.log(`👤 ${username} joined room [${roomPin}]`);
+            const room = rooms.get(roomPin);
 
-        // Tell this user they joined successfully
-        socket.emit("join-success", {
-            username,
-            usersInRoom: room.length,
-        });
+            // Check duplicate username
+            if (room.users.some((u) => u.username.toLowerCase() === cleanName.toLowerCase())) {
+                socket.emit("join-error", `"${cleanName}" is already taken. Choose a different name.`);
+                return;
+            }
 
-        // Notify everyone in the room that a new user joined
-        io.to(roomPin).emit("user-joined", {
-            username,
-            usersInRoom: room.length,
-        });
+            // Add user to room
+            room.users.push({ socketId: socket.id, username: cleanName, role: "user" });
+
+            socket.join(roomPin);
+            socket.roomPin = roomPin;
+            socket.username = cleanName;
+            socket.role = "user";
+
+            console.log(`👤 User "${cleanName}" joined room [${roomPin}]`);
+
+            // Build user list for broadcast
+            const userList = room.users.map((u) => ({ username: u.username, role: u.role }));
+
+            // Tell joining user they're in
+            socket.emit("join-success", {
+                username: cleanName,
+                role: "user",
+                users: userList,
+            });
+
+            // Notify everyone in the room
+            io.to(roomPin).emit("user-joined", {
+                username: cleanName,
+                role: "user",
+                users: userList,
+            });
+
+            return;
+        }
+
+        socket.emit("join-error", "Invalid role selected.");
     });
 
     // ------------------------------------------
     // Event: "send-message"
-    // The client sends { message }.
-    // We broadcast it to everyone in the same room.
     // ------------------------------------------
     socket.on("send-message", ({ message }) => {
         if (!socket.roomPin || !message) return;
 
-        // Build the message object with timestamp
         const now = new Date();
         const time = now.toLocaleTimeString("en-IN", {
             hour: "2-digit",
@@ -110,18 +151,55 @@ io.on("connection", (socket) => {
 
         const msgData = {
             sender: socket.username,
+            role: socket.role,
             message,
             time,
         };
 
-        // Send to everyone in the room (including sender)
         io.to(socket.roomPin).emit("receive-message", msgData);
         console.log(`💬 [${socket.roomPin}] ${socket.username}: ${message}`);
     });
 
     // ------------------------------------------
+    // Event: "kick-user" (Admin only)
+    // ------------------------------------------
+    socket.on("kick-user", ({ targetUsername }) => {
+        if (!socket.roomPin || socket.role !== "admin") return;
+
+        const room = rooms.get(socket.roomPin);
+        if (!room) return;
+
+        const target = room.users.find(
+            (u) => u.username === targetUsername && u.role !== "admin"
+        );
+        if (!target) return;
+
+        // Notify the kicked user
+        const targetSocket = io.sockets.sockets.get(target.socketId);
+        if (targetSocket) {
+            targetSocket.emit("kicked", "You have been removed by the Admin.");
+            targetSocket.leave(socket.roomPin);
+            targetSocket.roomPin = null;
+            targetSocket.username = null;
+            targetSocket.role = null;
+        }
+
+        // Remove from room
+        room.users = room.users.filter((u) => u.socketId !== target.socketId);
+
+        const userList = room.users.map((u) => ({ username: u.username, role: u.role }));
+
+        io.to(socket.roomPin).emit("user-left", {
+            username: targetUsername,
+            kicked: true,
+            users: userList,
+        });
+
+        console.log(`🚫 Admin kicked "${targetUsername}" from room [${socket.roomPin}]`);
+    });
+
+    // ------------------------------------------
     // Event: "typing"
-    // Broadcast typing indicator to the other user.
     // ------------------------------------------
     socket.on("typing", () => {
         if (!socket.roomPin) return;
@@ -132,12 +210,13 @@ io.on("connection", (socket) => {
 
     socket.on("stop-typing", () => {
         if (!socket.roomPin) return;
-        socket.to(socket.roomPin).emit("user-stop-typing");
+        socket.to(socket.roomPin).emit("user-stop-typing", {
+            username: socket.username,
+        });
     });
 
     // ------------------------------------------
     // Event: "disconnect"
-    // Clean up the room when a user leaves.
     // ------------------------------------------
     socket.on("disconnect", () => {
         console.log(`❌ Disconnected: ${socket.id}`);
@@ -145,20 +224,37 @@ io.on("connection", (socket) => {
         if (socket.roomPin && rooms.has(socket.roomPin)) {
             const room = rooms.get(socket.roomPin);
 
-            // Remove this user from the room array
-            const updatedRoom = room.filter((u) => u.socketId !== socket.id);
-            rooms.set(socket.roomPin, updatedRoom);
+            // Remove user
+            room.users = room.users.filter((u) => u.socketId !== socket.id);
 
-            // Notify remaining users
-            io.to(socket.roomPin).emit("user-left", {
-                username: socket.username,
-                usersInRoom: updatedRoom.length,
-            });
+            const userList = room.users.map((u) => ({ username: u.username, role: u.role }));
 
-            // If room is empty, delete it
-            if (updatedRoom.length === 0) {
+            // If admin left, close the entire room
+            if (socket.role === "admin") {
+                io.to(socket.roomPin).emit("room-closed", "Admin has left. The room is now closed.");
+                // Disconnect all remaining sockets from the room
+                for (const u of room.users) {
+                    const s = io.sockets.sockets.get(u.socketId);
+                    if (s) {
+                        s.leave(socket.roomPin);
+                        s.roomPin = null;
+                    }
+                }
                 rooms.delete(socket.roomPin);
-                console.log(`🗑️  Room [${socket.roomPin}] deleted (empty).`);
+                console.log(`🗑️  Room [${socket.roomPin}] closed (admin left).`);
+            } else {
+                // Normal user left
+                io.to(socket.roomPin).emit("user-left", {
+                    username: socket.username,
+                    kicked: false,
+                    users: userList,
+                });
+
+                // If room is empty, delete it
+                if (room.users.length === 0) {
+                    rooms.delete(socket.roomPin);
+                    console.log(`🗑️  Room [${socket.roomPin}] deleted (empty).`);
+                }
             }
         }
     });
