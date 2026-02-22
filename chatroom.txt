@@ -1,0 +1,39 @@
+You are an expert full-stack web developer.
+
+Create a complete real-time private chatroom application using:
+- Frontend: HTML, CSS, Vanilla JavaScript
+- Backend: Node.js with Express
+- Real-time communication: Socket.io
+
+Requirements:
+1. There are only two users: User1 and User2.
+2. Both users must enter the SAME numeric PIN to join the chatroom.
+3. If the PIN does not match, user should see an error message and chat should NOT start.
+4. If the PIN matches:
+   - Both users join the same private room
+   - They can send and receive messages in real time
+5. Messages should display:
+   - Sender name (User1 / User2)
+   - Message text
+   - Time (HH:MM format)
+6. UI Requirements:
+   - Clean and modern chat UI
+   - Message bubbles (left for User2, right for User1)
+   - Input box + Send button
+   - PIN input screen before chat starts
+7. Security:
+   - Do NOT expose the PIN in frontend after joining
+   - Validate PIN on the server
+8. Project Structure:
+   - server.js (Node.js backend)
+   - public/
+     - index.html
+     - style.css
+     - script.js
+9. Include:
+   - Full backend code
+   - Full frontend code
+   - Instructions to run the project (npm install, node server.js)
+10. Code should be beginner-friendly with comments.
+
+Generate the complete working code.

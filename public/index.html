@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Chatroom</title>
+  <meta name="description" content="Real-time private chatroom with PIN-based authentication" />
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Our stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============================================ -->
+  <!-- PIN ENTRY SCREEN                             -->
+  <!-- ============================================ -->
+  <div id="join-screen" class="screen active">
+    <div class="join-card">
+      <!-- Decorative glow -->
+      <div class="glow glow-1"></div>
+      <div class="glow glow-2"></div>
+
+      <div class="join-header">
+        <div class="logo">💬</div>
+        <h1>Private Chatroom</h1>
+        <p class="subtitle">Enter a shared PIN to start chatting</p>
+      </div>
+
+      <div class="join-form">
+        <!-- Username selection -->
+        <label for="username-select">Choose your name</label>
+        <div class="select-wrapper">
+          <select id="username-select">
+            <option value="User1">User1</option>
+            <option value="User2">User2</option>
+          </select>
+        </div>
+
+        <!-- PIN input -->
+        <label for="pin-input">Room PIN</label>
+        <input
+          type="password"
+          id="pin-input"
+          placeholder="Enter numeric PIN"
+          maxlength="10"
+          autocomplete="off"
+        />
+
+        <!-- Error message -->
+        <p id="error-msg" class="error-msg"></p>
+
+        <!-- Join button -->
+        <button id="join-btn">Join Room</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- CHAT SCREEN                                  -->
+  <!-- ============================================ -->
+  <div id="chat-screen" class="screen">
+    <!-- Top bar -->
+    <header id="chat-header">
+      <div class="header-left">
+        <span class="header-icon">💬</span>
+        <div>
+          <h2>Private Chatroom</h2>
+          <p id="status-text" class="status-text">Waiting for partner…</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="online-badge" class="badge">1 / 2 online</span>
+      </div>
+    </header>
+
+    <!-- Messages area -->
+    <main id="messages-container">
+      <!-- Messages get appended here by script.js -->
+    </main>
+
+    <!-- Typing indicator -->
+    <div id="typing-indicator" class="typing-indicator hidden">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span id="typing-name"></span> is typing…
+    </div>
+
+    <!-- Message input -->
+    <footer id="chat-footer">
+      <input
+        type="text"
+        id="msg-input"
+        placeholder="Type a message…"
+        autocomplete="off"
+      />
+      <button id="send-btn" title="Send message">
+        <!-- Send arrow SVG -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </footer>
+  </div>
+
+  <!-- Socket.io client (served automatically by the server) -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Our client-side script -->
+  <script src="script.js"></script>
+</body>
+</html>
