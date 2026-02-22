@@ -188,9 +188,14 @@ socket.on("room-closed", (msg) => {
     location.reload();
 });
 
-// Sidebar toggle (mobile)
+// Sidebar toggle & close
 sidebarToggle.addEventListener("click", () => {
     sidebar.classList.toggle("collapsed");
+});
+
+const sidebarClose = document.getElementById("sidebar-close");
+sidebarClose.addEventListener("click", () => {
+    sidebar.classList.add("collapsed");
 });
 
 // ============================================
